@@ -29,8 +29,8 @@ jobs:
       - name: Restore opam cache
         uses: actions/cache@v2
         with:
-          path: ${HOME}/.opam
-          key: ${{ runner.os }}-${{ hashFiles('opam.locked') }}
+          path: ~/.opam
+          key: opam-${{ runner.os }}-${{ hashFiles('opam.locked') }}
 
       - name: Install Required Brew Packages for MacOS
         run: brew install pkg-config automake jq
