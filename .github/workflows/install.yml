@@ -21,7 +21,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      - name: Restore opam cache
+      - name: Attempt to get opam tree from the cache
         uses: actions/cache@v2
         with:
           path: ~/.opam
@@ -33,41 +33,30 @@ jobs:
           ocaml-version: ${{ matrix.ocaml-version }}
 
       - name: Install Required Brew Packages for MacOS
-        run: brew install pkg-config automake jq
+        run: brew install automake jq ninja pkg-config
         if: runner.os == 'macOS'
 
       - name: Install Required Apt Packages for Ubuntu
-        run: sudo apt-get install libmpfr-dev libsqlite3-dev
+        run: sudo apt-get install libmpfr-dev libsqlite3-dev ninja-build
         if: runner.os == 'Linux'
 
-      - name: Fetch clang Release
+      - name: Compute hash of clang installation
+        id: clang-hash
         run: |
-          REPO="facebook/facebook-clang-plugins"
-          URL="https://api.github.com/repos/$REPO"
+          echo "::set-output name=value::$(./facebook-clang-plugins/clang/setup.sh --clang-hash)"
 
-          CLANGFILE="clang-install-${{ matrix.os }}.tar.gz"
+      - name: Attempt to get clang from the cache
+        id: cache-clang
+        uses: actions/cache@v2
+        with:
+          path: facebook-clang-plugins/clang/install
+          key: clang-${{ runner.os }}-${{ steps.clang-hash.outputs.value }}
 
-          RELEASE_INFO="$(curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$URL/releases/latest")"
-          if ! ASSET_ID="$(jq ".assets | map(select(.name == \"$CLANGFILE\"))[0].id" <<< "$RELEASE_INFO")"; then
-              echo "$RELEASE_INFO"
-              exit 1
-          fi
+      - name: Record whether clang cache was hit
+        if: steps.cache-clang.outputs.cache-hit == 'true'
+        run: ./facebook-clang-plugins/clang/setup.sh --only-record-install
 
-          if [[ -z "$ASSET_ID" || "$ASSET_ID" == "null" ]]; then
-              echo "Could not find asset ID" >&2
-              exit 1
-          fi
-
-          curl -J -L "$URL/releases/assets/$ASSET_ID" \
-              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/octet-stream" \
-              -o "$CLANGFILE"
-
-      - run: tar -xzf clang-install-${{ matrix.os }}.tar.gz -C facebook-clang-plugins/clang/
-
-      - run: ./facebook-clang-plugins/clang/setup.sh --only-record-install
-
-      - run: ./build-infer.sh -y all
+      - run: ./build-infer.sh --yes all
 
       - run: make install
         if: runner.os == 'macOS'
